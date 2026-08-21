@@ -133,27 +133,34 @@ void resultat(void){
     FILE *fichier_candidat = fopen("candid.dat", "rb");
     FILE *fichier_bureau_vote = fopen("B_votes.dat", "rb");
 
-    if(fichier_bureau_vote == NULL || fichier_candidat == NULL || fichier_vote == NULL){
+    if (fichier_bureau_vote == NULL || fichier_candidat == NULL || fichier_vote == NULL) {
         printf(">> ERREUR : Echec d'ouverture des fichiers\n");
-        if(fichier_bureau_vote)
-            fclose(fichier_bureau_vote);
-        if(fichier_candidat)
-            fclose(fichier_candidat);
-        if(fichier_vote)
-            fclose(fichier_vote);
+        if (fichier_bureau_vote) fclose(fichier_bureau_vote);
+        if (fichier_candidat) fclose(fichier_candidat);
+        if (fichier_vote) fclose(fichier_vote);
         return;
     }
-    candidats liste_candidats[100];//on choisit une liste jusqu'a 100 (on suppose qu'on a pas plus de 100 candidats)
-    int nombre_candidat = 0;//qui prendra le nombre de candidat afin de parcourir une boucle de candida
 
-    while(fread(&liste_candidats[nombre_candidat], sizeof(candidats), 1,fichier_candidat) == 1){//on lit dans la liste de candidat pour recuperer le nombre
+    candidats liste_candidats[100];
+    int nombre_candidat = 0;
+    while (fread(&liste_candidats[nombre_candidat], sizeof(candidats), 1, fichier_candidat) == 1) {
         nombre_candidat++;
     }
-    votes liste_vote[1000];//on suppose qu'on a au max 1000 vote
-    int nombre_vote = 0;
 
-    while (fread(&liste_vote[nombre_vote], sizeof(votes), 1, fichier_vote) == 1) {//on fait la meme chose pour le nombre de vote
+    votes liste_vote[1000];
+    int nombre_vote = 0;
+    while (fread(&liste_vote[nombre_vote], sizeof(votes), 1, fichier_vote) == 1) {
         nombre_vote++;
+    }
+
+    // --- 1. Initialisation de la structure pour le Cumul National ---
+    stat_candidat stats_nationales[100];
+    for (int i = 0; i < nombre_candidat; i++) {
+        strcpy(stats_nationales[i].id_candid, liste_candidats[i].ID_candid);
+        strcpy(stats_nationales[i].nom, liste_candidats[i].Nom);
+        strcpy(stats_nationales[i].prenom, liste_candidats[i].Prenom);
+        stats_nationales[i].total_votes = 0;
+        stats_nationales[i].pourcentage = 0.0;
     }
 
     printf("\n===============================================================================================\n");
@@ -161,66 +168,68 @@ void resultat(void){
     printf("===============================================================================================\n");
 
     int total_global_non_blancs = 0;
-    int total_global_blancs = 0;//gestion des nombre totale de vote
+    int total_global_blancs = 0;
 
-    bureau_vote bureau;//variable de type bureau de vote
-    char departement_actuel[10];//nombre de departement
+    bureau_vote bureau;
+    char departement_actuel[30];
 
-    // Pour chaque Bureau de Vote (permet de grouper par Département)
-    while (fread(&bureau, sizeof(bureau_vote), 1, fichier_bureau_vote) == 1) {//on lit dans le fichier bureau de vote
-        extraire_departement(bureau.Adresse_BV, departement_actuel);//on utilise la fonction extrare departement afin de stocker dans departement_actuel
+    while (fread(&bureau, sizeof(bureau_vote), 1, fichier_bureau_vote) == 1) {
+        extraire_departement(bureau.Adresse_BV, departement_actuel);
 
-        //les votes
         int votes_blancs_dept = 0;
         int votes_non_blancs_dept = 0;
 
-        stat_candidat stats[70];//on distingue environ 70 candidats
+        stat_candidat stats_dept[100];
         for (int i = 0; i < nombre_candidat; i++) {
-            strcpy(stats[i].id_candid, liste_candidats[i].ID_candid);//on copie les element necessaire dans la structure temporaire qu'on a cree
-            strcpy(stats[i].nom, liste_candidats[i].Nom);
-            strcpy(stats[i].prenom, liste_candidats[i].Prenom);
-            stats[i].total_votes = 0;//initialment a 0
-            stats[i].pourcentage = 0.0;
+            strcpy(stats_dept[i].id_candid, liste_candidats[i].ID_candid);
+            strcpy(stats_dept[i].nom, liste_candidats[i].Nom);
+            strcpy(stats_dept[i].prenom, liste_candidats[i].Prenom);
+            stats_dept[i].total_votes = 0;
+            stats_dept[i].pourcentage = 0.0;
         }
-        //compter les votes
+
+        // Compter les votes du bureau courant
         for (int i = 0; i < nombre_vote; i++) {
             if (strcasecmp(liste_vote[i].BV, bureau.Id_BV) == 0) {
-                if (strcasecmp(liste_vote[i].id_candid, "0") == 0) {//gestion de vote blanc
-                    votes_blancs_dept++;//on increment le nombre de vote blanc
+                if (strcasecmp(liste_vote[i].id_candid, "0") == 0) {
+                    votes_blancs_dept++;
                 } else {
-                    votes_non_blancs_dept++;//sinon, on aura un ID candidat associe a l'electeur
+                    votes_non_blancs_dept++;
                     for (int j = 0; j < nombre_candidat; j++) {
-                        if (strcasecmp(liste_vote[i].id_candid, stats[j].id_candid) == 0) {
-                            stats[j].total_votes++;//on incremente le nombre total de vote du candidat
+                        if (strcasecmp(liste_vote[i].id_candid, stats_dept[j].id_candid) == 0) {
+                            stats_dept[j].total_votes++;
+                            // --- Cumul egalement sur le tableau National ---
+                            stats_nationales[j].total_votes++;
                             break;
                         }
                     }
                 }
             }
         }
-        int total_dept = votes_non_blancs_dept + votes_blancs_dept;//comme dans l'enonce on fait la somme de vote total
-        total_global_blancs += votes_blancs_dept;//on gere les vote blanc et non blanc
+
+        int total_dept = votes_non_blancs_dept + votes_blancs_dept;
+        total_global_blancs += votes_blancs_dept;
         total_global_non_blancs += votes_non_blancs_dept;
 
-        // Calcul du pourcentage
+        // Pourcentages au niveau du Département / BV
         for (int i = 0; i < nombre_candidat; i++) {
             if (total_dept > 0) {
-                stats[i].pourcentage = ((float)stats[i].total_votes / total_dept) * 100.0;//nombre de vote du candidat / nombre total de vote dans le pays *100
+                stats_dept[i].pourcentage = ((float)stats_dept[i].total_votes / total_dept) * 100.0;
             }
         }
 
-        // Tri decroissant par pourcentage (Tri a bulles)
+        // Tri local par BV / Département
         for (int i = 0; i < nombre_candidat - 1; i++) {
             for (int j = 0; j < nombre_candidat - i - 1; j++) {
-                if (stats[j].pourcentage < stats[j + 1].pourcentage) {
-                    stat_candidat temp = stats[j];
-                    stats[j] = stats[j + 1];
-                    stats[j + 1] = temp;
+                if (stats_dept[j].pourcentage < stats_dept[j + 1].pourcentage) {
+                    stat_candidat temp = stats_dept[j];
+                    stats_dept[j] = stats_dept[j + 1];
+                    stats_dept[j + 1] = temp;
                 }
             }
         }
 
-        // ==================== Affichage par Departement / BV ===========================
+        // Affichage par Département / BV
         printf("\n\nDEPARTEMENT : %-15s (BV: %s)\n", departement_actuel, bureau.Id_BV);
         printf("-----------------------------------------------------------------------------------------------\n");
         printf(" %-20s | %-20s | %-12s | %-12s\n", "NOM CANDIDAT", "PRENOM", "VOTES OBTENUS", "POURCENTAGE");
@@ -228,7 +237,7 @@ void resultat(void){
 
         for (int i = 0; i < nombre_candidat; i++) {
             printf(" %-20s | %-20s | %-13d | %-6.2f %%\n",
-                   stats[i].nom, stats[i].prenom, stats[i].total_votes, stats[i].pourcentage);
+                   stats_dept[i].nom, stats_dept[i].prenom, stats_dept[i].total_votes, stats_dept[i].pourcentage);
         }
         printf("-----------------------------------------------------------------------------------------------\n");
         printf(" Total votes non-blancs : %d | Total votes blancs : %d | Total General : %d\n",
@@ -236,17 +245,44 @@ void resultat(void){
         printf("-----------------------------------------------------------------------------------------------\n");
     }
 
-    // Resume global
+    // --- 2. Calcul des pourcentages et Tri pour le Résumé National ---
+    int total_national_general = total_global_non_blancs + total_global_blancs;
+
+    for (int i = 0; i < nombre_candidat; i++) {
+        if (total_national_general > 0) {
+            stats_nationales[i].pourcentage = ((float)stats_nationales[i].total_votes / total_national_general) * 100.0;
+        }
+    }
+
+    for (int i = 0; i < nombre_candidat - 1; i++) {
+        for (int j = 0; j < nombre_candidat - i - 1; j++) {
+            if (stats_nationales[j].pourcentage < stats_nationales[j + 1].pourcentage) {
+                stat_candidat temp = stats_nationales[j];
+                stats_nationales[j] = stats_nationales[j + 1];
+                stats_nationales[j + 1] = temp;
+            }
+        }
+    }
+
+    // --- 3. Affichage du Résumé Global National ---
     printf("\n===============================================================================================\n");
-    printf("                                 RESUME GLOBAL POUR TOUT LE PAYS                               \n");
+    printf("                               RESUME GLOBAL POUR TOUT LE PAYS                                 \n");
     printf("===============================================================================================\n");
+    printf(" %-20s | %-20s | %-12s | %-12s\n", "NOM CANDIDAT", "PRENOM", "VOTES NATIONAUX", "POURCENTAGE");
+    printf("-----------------------------------------------------------------------------------------------\n");
+
+    for (int i = 0; i < nombre_candidat; i++) {
+        printf(" %-20s | %-20s | %-15d | %-6.2f %%\n",
+               stats_nationales[i].nom, stats_nationales[i].prenom, stats_nationales[i].total_votes, stats_nationales[i].pourcentage);
+    }
+
+    printf("-----------------------------------------------------------------------------------------------\n");
     printf(" Total National Votes Non Blancs : %d\n", total_global_non_blancs);
     printf(" Total National Votes Blancs     : %d\n", total_global_blancs);
-    printf(" Total National General          : %d\n", total_global_non_blancs + total_global_blancs);
+    printf(" Total National General          : %d\n", total_national_general);
     printf("===============================================================================================\n\n");
 
     fclose(fichier_bureau_vote);
     fclose(fichier_candidat);
     fclose(fichier_vote);
-
 }
