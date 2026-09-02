@@ -1,0 +1,19 @@
+# Dependances
+node_modules/
+vendor/
+vendor.node_modules/
+
+# Artefacts de build intermediaires
+build/
+dist/
+.xmake/
+.lcui/
+src/obj/
+src/bin/
+
+# Fichiers temporaires de compilation
+*.o
+*.pdb
+*.ilk
+*.exp
+*.log
